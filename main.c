@@ -8,7 +8,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include "huffman.h"
-#include "syslog.h"
+#include "log.h"
 
 #define VERSION                 "1.0"
 #define Author                  "Hat Huang"
@@ -73,7 +73,7 @@ int main(int argc, char *argv[])
                 perror("fail to do gettimeofday");
                 return -1; 
         }
-        init_syslog();
+        init_log();
         if (mode & MODE_COMPRESSION) {
                 // Compression
                 tags = (struct huffman_tags *)tags_buf;
@@ -114,7 +114,7 @@ int main(int argc, char *argv[])
         } else if (mode & MODE_DECOMPRESSION) {
                 // Decompression 
                 if (huffman_decompression(infile, outfile)) {
-                        syslog(LOG_USER | LOG_ERR , "%s : Fail to huffman_decompression", __func__);
+                        log(LOG_USER | LOG_ERR , "%s : Fail to huffman_decompression", __func__);
                         return -1;
                 }
         }
