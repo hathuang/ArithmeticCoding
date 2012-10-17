@@ -5,6 +5,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <errno.h>
+#include "arithmetic.h"
 
 static int element_init(unsigned int *arr, const char *src, unsigned int length)
 {
@@ -40,34 +41,67 @@ unsigned int priority_offset(unsigned int *arr, const unsigned int ch)
         return offset;
 }
 
-#define CHAR_BITS               8
-#define HIGHEST_BIT(x)          ((x) & (1<<((sizeof(unsigned int)<<3)-1)))
-#define LOWEST_BIT(x)           ((x) & 0x01)
 /* arithmetic_compression */
-int compression(const char *outfile, char *src, unsigned int length, struct tags *tags)
+int compression(const char *outfile, char *src, unsigned int length)
 {
         unsigned int priority[256];
         unsigned int high, low, high_t, low_t;
         unsigned int element_no;
-        int fd, i;
-        unsigned char outch, outbit;
-        unsigned int offset, all_priority;
+        int fd, i, j;
+        unsigned char outch, outbit, buf[32];
+        unsigned int offset, all_priority, outbytes;
+        struct tags tag;
 
         if (!outfile || !tags || !src || !length) return -1;
-        if ((element_no = element_init(priority, src, length)) <= 0) return -1;
-        all_priority = element_no;
+        if ((element_no = element_init(priority, src, length)) <= 0 || element_no > 256) return -1;
+        all_priority = element_no & 0xff; // 256 is formated to 0 hear
+        memset(&tag, 0, sizeof(struct tags));
+        tag.tag = TAGS_TAG;
+        tag.element = element_no;
+        tag.types = element_no > 32 ? TAGS_TYPE_DYNAMIC : TAGS_TYPE_STATIC;
         low = 0;
-        high = ~0; // 0xfffffff > 4290000000
+        high = ~0; // 0xffffffff > 4290000000
         if ((fd = open(outfile, O_RDWR | O_CREAT | O_TRUNC, 0644)) < 0) {
                 return -1;
         }
         // write tags
+        if (sizeof(struct tags) != wirte(fd, &tag, sizeof(struct tags))) {
+                close(fd);
+                return -1;
+        }
         // wirte char element
         i = 0;
+        if (tag.types == TAGS_TYPE_STATIC) {
+                j = 0;
+                while (j < element_no) {
+                        if (priority[i]) buf[j++] = 0xff & i;
+                        ++i;
+                }
+        } else if (tag.types == TAGS_TYPE_DYNAMIC) {
+                while (i < 256) {
+                        j = (i >> 3) & 0x1f;
+                        buf[j] <<= 1;
+                        if (priority[i++]) buf[j] |= 0x01;
+                }
+                ++j;
+        } else {
+                close(fd);
+                return -1;
+        }
+        //buf[j] = 0;
+        if (j != write(fd, buf, j)) {
+                close(fd);
+                return -1;
+        }
+        // comp
+        i = 0;
         outbit = 0;
+        outbytes = 0;
         while (i < length) {
                 if (HIGHEST_BIT(high) ^ HIGHEST_BIT(low)) {
                 // chk the second hihgest bit
+                        if (!SECOND_HIGHEST_BIT(high) && SECOND_HIGHEST_BIT(low)) {
+                        }
                 } else {
                         outch <<= 1;
                         if (HIGHEST_BIT(high)) {
@@ -75,8 +109,9 @@ int compression(const char *outfile, char *src, unsigned int length, struct tags
                         } else {
                                 // do nothing
                         }
-                        if (++outbit == CHAR_BITS && 1 != wirte(fd, &outch, 1)) {
+                        if (++outbit == CHAR_BITS && ((outbit = 0) || (++outbytes)) && 1 != wirte(fd, &outch, 1)) {
                                 fprintf(stderr, "file to write %s : %s", outfile, strerror(errno));        
+                                close(fd);
                                 return -1;
                         }
                         low <<= 1;
@@ -92,9 +127,21 @@ int compression(const char *outfile, char *src, unsigned int length, struct tags
                 if (high_t <= low_t) {
                        // TODO  
                 }
+                low = low_t;
+                high = high_t;
                 ++i;
         }
+        tag.lastoutbits = outbit ? outbit : CHAR_BITS;
+        tag.magic = (low + high) > 1;
+        if (tag.magic >= high || tags.magic <= low) {
+                // TODO
+        }
+        if (lseek(fd, 0, SEEK_SET) < 0 || sizeof(struct tags) != wirte(fd, &tag, sizeof(struct tags))) {
+                close(fd);
+                return -1;
+        }
 
+        close(fd);
         return 0;
 }
 
