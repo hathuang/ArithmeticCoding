@@ -34,9 +34,7 @@ unsigned int priority_offset(unsigned int *arr, const unsigned int ch)
         if (!arr || ch > 255) return ~0;
         i = 0;
         offset = 0;
-        while (i < ch) {
-                offset += arr[i++];
-        }
+        while (i < ch) offset += arr[i++];
 
         return offset;
 }
@@ -48,12 +46,12 @@ int compression(const char *outfile, char *src, unsigned int length)
         unsigned int high, low, high_t, low_t;
         unsigned int element_no;
         int fd, i, j;
-        unsigned char outch, outbit, buf[32];
+        unsigned char outch, outbit, buf[256];
         unsigned int offset, all_priority, outbytes;
         struct tags tag;
 
         if (!outfile || !tags || !src || !length) return -1;
-        if ((element_no = element_init(priority, src, length)) <= 0 || element_no > 256) return -1;
+        if ((element_no = element_init(priority, src, length)) == 0 || element_no > 256) return -1;
         all_priority = element_no & 0xff; // 256 is formated to 0 hear
         memset(&tag, 0, sizeof(struct tags));
         tag.tag = TAGS_TAG;
