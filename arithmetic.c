@@ -46,7 +46,7 @@ int compression(const char *outfile, char *src, unsigned int length)
         unsigned int high, low, high_t, low_t;
         unsigned int element_no;
         int fd, i, j;
-        unsigned char outch, outbit, buf[256];
+        unsigned char outch, outbits, buf[256];
         unsigned int offset, all_priority, outbytes;
         struct tags tag;
 
@@ -69,13 +69,13 @@ int compression(const char *outfile, char *src, unsigned int length)
         }
         // wirte char element
         i = 0;
-        if (tag.types == TAGS_TYPE_STATIC) {
+        if (tag.types & TAGS_TYPE_STATIC) {
                 j = 0;
                 while (j < element_no) {
                         if (priority[i]) buf[j++] = 0xff & i;
                         ++i;
                 }
-        } else if (tag.types == TAGS_TYPE_DYNAMIC) {
+        } else if (tag.types & TAGS_TYPE_DYNAMIC) {
                 while (i < 256) {
                         j = (i >> 3) & 0x1f;
                         buf[j] <<= 1;
@@ -93,7 +93,7 @@ int compression(const char *outfile, char *src, unsigned int length)
         }
         // comp
         i = 0;
-        outbit = 0;
+        outbits = 0;
         outbytes = 0;
         while (i < length) {
                 if (HIGHEST_BIT(high) ^ HIGHEST_BIT(low)) {
@@ -107,7 +107,7 @@ int compression(const char *outfile, char *src, unsigned int length)
                         } else {
                                 // do nothing
                         }
-                        if (++outbit == CHAR_BITS && ((outbit = 0) || (++outbytes)) && 1 != wirte(fd, &outch, 1)) {
+                        if (++outbits == CHAR_BITS && ((outbits = 0) || (++outbytes)) && 1 != wirte(fd, &outch, 1)) {
                                 fprintf(stderr, "file to write %s : %s", outfile, strerror(errno));        
                                 close(fd);
                                 return -1;
@@ -129,7 +129,7 @@ int compression(const char *outfile, char *src, unsigned int length)
                 high = high_t;
                 ++i;
         }
-        tag.lastoutbits = outbit ? outbit : CHAR_BITS;
+        tag.lastoutbits = outbits ? outbits : CHAR_BITS;
         tag.magic = (low + high) > 1;
         if (tag.magic >= high || tags.magic <= low) {
                 // TODO

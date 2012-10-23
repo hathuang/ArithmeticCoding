@@ -12,6 +12,9 @@
 
 #define TAGS_TYPE_STATIC        (1<<1)
 #define TAGS_TYPE_DYNAMIC       (1<<2)
+#define TAGS_TYPE_CHAR          (1<<4)
+#define TAGS_TYPE_SHORT         (1<<5)
+#define TAGS_TYPE_INT           (1<<6)
 #define TAGS_TAG                'A'
 
 #define max(x, y)               ((x) > (y) ? (x) : (y))
@@ -21,15 +24,36 @@
 /*#define edge(x, y)              ((x)/(y) + (((x)%(y)) ? 1 : 0))*/
 
 struct tags {
-        unsigned char tag; // A
-        unsigned char type;
-        unsigned char lastoutbits;
-        unsigned char elements;
-        unsigned int magic;
+        unsigned char tag;              // 'A' is short for arithmetic coding
+        unsigned char type;             // static coding or dynamic coding OR ?
+        unsigned char lastoutbits;      // last out put *magic number bits* (1-8)
+        unsigned char elements;         // number of char in the src file(0 means 256)
+        unsigned int magic;             // the magic number in the final
 };
+
+struct com {
+        unsigned char outbits;
+        unsigned char currchar
+        unsigned int high;
+        unsigned int low;
+        unsigned int currsize;
+        unsigned int outbytes;
+}
 
 extern int compression(const char *outfile, char *src, unsigned int length);
 extern int decompression(const char *outfile, const char *infile);
 
+/*
+                               arithmetic file arch
+
+----------------------------------------------------------------------------------
+|          tags            |                     8 bytes                         |
+|--------------------------+------------------------------------------------------
+|    elements descriptor   | static (as tags.elements say) or dynamic : 32 bytes |
+|--------------------------+------------------------------------------------------
+|  file body (magic body)  |      file length decrease the total bytes above     |
+----------------------------------------------------------------------------------
+ 
+ */ 
 
 #endif // arithmetic.h
