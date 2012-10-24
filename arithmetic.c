@@ -6,6 +6,7 @@
 #include <fcntl.h>
 #include <errno.h>
 #include "arithmetic.h"
+#include "io.h"
 
 static int element_init(unsigned int *arr, const char *src, unsigned int length)
 {
@@ -40,30 +41,29 @@ unsigned int priority_offset(unsigned int *arr, const unsigned int ch)
 }
 
 /* arithmetic_compression */
-int compression(const char *outfile, char *src, unsigned int length)
+int compression(const char *outfile, char *src, unsigned int filesize)
 {
         unsigned int priority[256];
-        unsigned int high, low, high_t, low_t;
         unsigned int element_no;
         int fd, i, j;
-        unsigned char outch, outbits, buf[256];
-        unsigned int offset, all_priority, outbytes;
+        unsigned char buf[256];
         struct tags tag;
+        struct com com;
+        unsigned high, low;
 
-        if (!outfile || !tags || !src || !length) return -1;
-        if ((element_no = element_init(priority, src, length)) == 0 || element_no > 256) return -1;
+        if (!outfile || !tags || !src || !filesize) return -1;
+        if ((element_no = element_init(priority, src, filesize)) == 0 || element_no > 256) return -1;
         all_priority = element_no & 0xff; // 256 is formated to 0 hear
-        memset(&tag, 0, sizeof(struct tags));
+        memset(&tag, 0, TAGS_SIZE);
         tag.tag = TAGS_TAG;
         tag.element = element_no;
+        tag.filesize = filesize; 
         tag.types = element_no > 32 ? TAGS_TYPE_DYNAMIC : TAGS_TYPE_STATIC;
-        low = 0;
-        high = ~0; // 0xffffffff > 4290000000
         if ((fd = open(outfile, O_RDWR | O_CREAT | O_TRUNC, 0644)) < 0) {
                 return -1;
         }
         // write tags
-        if (sizeof(struct tags) != wirte(fd, &tag, sizeof(struct tags))) {
+        if (sizeof(struct tags) != writex(fd, &tag, TAGS_SIZE)) {
                 close(fd);
                 return -1;
         }
@@ -86,22 +86,29 @@ int compression(const char *outfile, char *src, unsigned int length)
                 close(fd);
                 return -1;
         }
-        //buf[j] = 0;
-        if (j != write(fd, buf, j)) {
+        if (j != writex(fd, buf, j)) {
                 close(fd);
                 return -1;
         }
         // comp
         i = 0;
-        outbits = 0;
-        outbytes = 0;
-        while (i < length) {
-                if (HIGHEST_BIT(high) ^ HIGHEST_BIT(low)) {
+        com.outbits = 0;
+        com.outbytes = 0;
+        com.low = 0;
+        com.high = ~0; // 0xffffffff > 4290000000
+        com.offset = 0;
+        com.currsize = 0;
+        com.currchar = 0;
+        while (i < filesize) {
+                //if (HIGHEST_BIT(high) ^ HIGHEST_BIT(low)) {
                 // chk the second hihgest bit
-                        if (!SECOND_HIGHEST_BIT(high) && SECOND_HIGHEST_BIT(low)) {
-                        }
-                } else {
-                        outch <<= 1;
+                //if (!SECOND_HIGHEST_BIT(high) && SECOND_HIGHEST_BIT(low)) {
+                //}
+                //} else {
+                if ((i + 1) == filesize) {
+                        // TODO 
+                } else if ((com.high - com.low) < com.currsize) {
+                        com.currchar <<= 1;
                         if (HIGHEST_BIT(high)) {
                                 outch |= 0x01;
                         } else {
@@ -118,8 +125,8 @@ int compression(const char *outfile, char *src, unsigned int length)
                 }
                 // get priority_offset
                 ++(priority[*(src+i) & 0xff]);
-                ++all_priority;
-                if ((offset = priority_offset(priority, *(src+i))) >= (length + element_no)) return -1;
+                ++(com.currsize);
+                if ((offset = priority_offset(priority, *(src+i))) >= (filesize + element_no)) return -1;
                 low_t = (high - low) * offset / all_priority + low;
                 high_t = (high - low) * (offset + (priority[*(src+i) & 0xff])) / all_priority + low;
                 if (high_t <= low_t) {

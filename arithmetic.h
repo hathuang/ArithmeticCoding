@@ -29,7 +29,10 @@ struct tags {
         unsigned char lastoutbits;      // last out put *magic number bits* (1-8)
         unsigned char elements;         // number of char in the src file(0 means 256)
         unsigned int magic;             // the magic number in the final
+        unsigned int filesize;          // src file size
 };
+
+#define TAGS_SIZE               sizeof(struct tags)
 
 struct com {
         unsigned char outbits;
@@ -38,6 +41,7 @@ struct com {
         unsigned int low;
         unsigned int currsize;
         unsigned int outbytes;
+        unsigned int offset;
 }
 
 extern int compression(const char *outfile, char *src, unsigned int length);
