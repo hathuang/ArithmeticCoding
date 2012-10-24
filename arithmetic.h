@@ -40,7 +40,7 @@ struct com {
         unsigned short elements;
         unsigned int high;
         unsigned int low;
-        unsigned int currsize;
+        unsigned int currsize; // file size
         unsigned int outbytes;
         unsigned int offset;
 };

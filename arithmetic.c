@@ -44,7 +44,7 @@ unsigned int priority_offset(unsigned int *arr, const unsigned int ch)
 int expand(unsigned int *_high, unsigned int *_low, unsigned int size, unsigned int *_outch)
 {
         unsigned int high = *_high;
-        unsigned int low = *low;
+        unsigned int low = *_low;
         unsigned int outch = 0;
         int bits = 0;
 
@@ -69,13 +69,44 @@ int expand(unsigned int *_high, unsigned int *_low, unsigned int size, unsigned 
         return bits;
 }
 
+
+//if (outformate(outstr, outch, com.outbits, bit)) {
+int outformate(unsigned char *currstr, unsigned int outch, unsigned char currbits, unsigned int bit)
+{
+        unsigned int byte, i, usebits, ret;
+
+        if (!currstr || currbits > CHAR_BITS || bit >= INT_BITS) return -1;
+
+        byte = (bit + currbits) / CHAR_BITS;
+        ret = byte;
+
+        i = 0;
+        do {
+                if (byte) {
+                        usebits = CHAR_BITS - currbits;
+                        *(currstr + i) <<= usebits;
+                        *(currstr + i) |= (outch >> (bit - usebits)) & ((1 << usebits) - 1);
+                        currbits = 0;
+                        bit -= usebits;
+                        --byte;
+                        ++i;
+                } else {
+                        *(currstr + i) <<= bit;
+                        *(currstr + i) |= outch & ((1 << bit) - 1);
+                        bit = 0;
+                }
+        } while (byte > 0 || bit > 0);
+
+        return ret;
+}
+
 /* arithmetic_compression */
 int compression(const char *outfile, char *src, unsigned int filesize)
 {
         unsigned int priority[256];
         unsigned int element_no;
         int fd, i, j;
-        unsigned char buf[256], outstr[4];
+        unsigned char buf[256], outstr[8];
         struct tags tag;
         struct com com;
         unsigned int high, low, bit, outch, outbyte;
@@ -133,31 +164,29 @@ int compression(const char *outfile, char *src, unsigned int filesize)
                         if ((bit = expand(&com.high, &com.low, com.currsize, &outch)) < 0) {
                                 return -1;
                         } else if (bit > 0) {
-                                if (outformate(outstr, outch, com.outbits, bit)) {
+                                if ((outbyte = outformate(outstr, outch, com.outbits, bit)) < 0) {
                                         close(fd);
                                         return -1;
                                 }
                                 com.outbits += bit;
-                                outbyte = com.outbits / CHAR_BITS;
-                                com.outbits = com.outbits % CHAR_BITS;
-                                if (outbyte > 0 && outbyte != wirtex(fd, &outch, outbyte)) {
-                                        //fprintf(stderr, "file to write %s : %s", outfile, strerror(errno));        
+                                //outbyte = com.outbits / CHAR_BITS;
+                                //com.outbits = com.outbits % CHAR_BITS;
+                                com.outbits = com.outbits - (outbyte << 3);
+                                if (outbyte > 0 && com.outbytes += outbyte && outbyte != writex(fd, &outch, outbyte)) {
+                                        fprintf(stderr, "file to write %s : %s", outfile, strerror(errno));        
                                         close(fd);
                                         return -1;
                                 }
                         }
                 }
                 // get priority_offset
+                if ((com.offset = priority_offset(priority, *(src+i))) >= (filesize + element_no)) return -1;
+                low = (com.high - com.low) * com.offset / all_priority + com.low;
+                high = (com.high - com.low) * (com.offset + (priority[*(src+i) & 0xff])) / all_priority + com.low;
                 ++(priority[*(src+i) & 0xff]);
                 ++(com.currsize);
-                if ((offset = priority_offset(priority, *(src+i))) >= (filesize + element_no)) return -1;
-                low_t = (high - low) * offset / all_priority + low;
-                high_t = (high - low) * (offset + (priority[*(src+i) & 0xff])) / all_priority + low;
-                if (high_t <= low_t) {
-                       // TODO  
-                }
-                low = low_t;
-                high = high_t;
+                com.low = low;
+                com.high = high;
                 ++i;
         }
         tag.lastoutbits = outbits ? outbits : CHAR_BITS;
