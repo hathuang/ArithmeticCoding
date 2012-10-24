@@ -6,8 +6,8 @@
 #define SHORT_BITS              (CHAR_BITS << (sizeof(short)>>1))
 #define INT_BITS                (CHAR_BITS << (sizeof(int)>>1))
 
-#define HIGHEST_BIT(x)          ((x) & (1<<((sizeof(unsigned int)<<3)-1)))
-#define SECOND_HIGHEST_BIT(x)   ((x) & (1<<((sizeof(unsigned int)<<3)-2)))
+#define HIGHEST_BIT(x)          ((x) & (1<<((sizeof(x)<<3)-1)))
+#define SECOND_HIGHEST_BIT(x)   ((x) & (1<<((sizeof(x)<<3)-2)))
 #define LOWEST_BIT(x)           ((x) & 0x01)
 
 #define TAGS_TYPE_STATIC        (1<<1)
@@ -36,13 +36,14 @@ struct tags {
 
 struct com {
         unsigned char outbits;
-        unsigned char currchar
+        unsigned char currchar;
+        unsigned short elements;
         unsigned int high;
         unsigned int low;
         unsigned int currsize;
         unsigned int outbytes;
         unsigned int offset;
-}
+};
 
 extern int compression(const char *outfile, char *src, unsigned int length);
 extern int decompression(const char *outfile, const char *infile);

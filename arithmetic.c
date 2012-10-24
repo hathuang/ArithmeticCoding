@@ -4,6 +4,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <unistd.h>
 #include <errno.h>
 #include "arithmetic.h"
 #include "io.h"
@@ -40,25 +41,52 @@ unsigned int priority_offset(unsigned int *arr, const unsigned int ch)
         return offset;
 }
 
+int expand(unsigned int *_high, unsigned int *_low, unsigned int size, unsigned int *_outch)
+{
+        unsigned int high = *_high;
+        unsigned int low = *low;
+        unsigned int outch = 0;
+        int bits = 0;
+
+        if (!outch) return -1; 
+        if ((high - low) > size) return 0;
+        if (high == 0x80000000 && low == 0x7fffffff) {
+                high = ~0;
+                low = 0;
+        } else {
+                while ((high - low) <= size) {
+                        if (++bits > 32) return -1;
+                        outch <<= 1;
+                        outch |= 0x01 & (high >> 31);
+                        high <<= 1;
+                        low <<= 1;
+                }
+        }
+        *_high = high;
+        *_low = low;
+        *_outch = outch;
+
+        return bits;
+}
+
 /* arithmetic_compression */
 int compression(const char *outfile, char *src, unsigned int filesize)
 {
         unsigned int priority[256];
         unsigned int element_no;
         int fd, i, j;
-        unsigned char buf[256];
+        unsigned char buf[256], outstr[4];
         struct tags tag;
         struct com com;
-        unsigned high, low;
+        unsigned int high, low, bit, outch, outbyte;
 
-        if (!outfile || !tags || !src || !filesize) return -1;
+        if (!outfile || !src || !filesize) return -1;
         if ((element_no = element_init(priority, src, filesize)) == 0 || element_no > 256) return -1;
-        all_priority = element_no & 0xff; // 256 is formated to 0 hear
         memset(&tag, 0, TAGS_SIZE);
         tag.tag = TAGS_TAG;
-        tag.element = element_no;
+        tag.elements = element_no & 0xff; // 256 is formated to 0 hear
         tag.filesize = filesize; 
-        tag.types = element_no > 32 ? TAGS_TYPE_DYNAMIC : TAGS_TYPE_STATIC;
+        tag.type = element_no > 32 ? TAGS_TYPE_DYNAMIC : TAGS_TYPE_STATIC;
         if ((fd = open(outfile, O_RDWR | O_CREAT | O_TRUNC, 0644)) < 0) {
                 return -1;
         }
@@ -69,13 +97,13 @@ int compression(const char *outfile, char *src, unsigned int filesize)
         }
         // wirte char element
         i = 0;
-        if (tag.types & TAGS_TYPE_STATIC) {
+        if (tag.type & TAGS_TYPE_STATIC) {
                 j = 0;
                 while (j < element_no) {
                         if (priority[i]) buf[j++] = 0xff & i;
                         ++i;
                 }
-        } else if (tag.types & TAGS_TYPE_DYNAMIC) {
+        } else if (tag.type & TAGS_TYPE_DYNAMIC) {
                 while (i < 256) {
                         j = (i >> 3) & 0x1f;
                         buf[j] <<= 1;
@@ -99,29 +127,25 @@ int compression(const char *outfile, char *src, unsigned int filesize)
         com.offset = 0;
         com.currsize = 0;
         com.currchar = 0;
+        com.elements = element_no & 0xffff;
         while (i < filesize) {
-                //if (HIGHEST_BIT(high) ^ HIGHEST_BIT(low)) {
-                // chk the second hihgest bit
-                //if (!SECOND_HIGHEST_BIT(high) && SECOND_HIGHEST_BIT(low)) {
-                //}
-                //} else {
-                if ((i + 1) == filesize) {
-                        // TODO 
-                } else if ((com.high - com.low) < com.currsize) {
-                        com.currchar <<= 1;
-                        if (HIGHEST_BIT(high)) {
-                                outch |= 0x01;
-                        } else {
-                                // do nothing
-                        }
-                        if (++outbits == CHAR_BITS && ((outbits = 0) || (++outbytes)) && 1 != wirte(fd, &outch, 1)) {
-                                fprintf(stderr, "file to write %s : %s", outfile, strerror(errno));        
-                                close(fd);
+                if ((com.high - com.low) < com.currsize) {
+                        if ((bit = expand(&com.high, &com.low, com.currsize, &outch)) < 0) {
                                 return -1;
+                        } else if (bit > 0) {
+                                if (outformate(outstr, outch, com.outbits, bit)) {
+                                        close(fd);
+                                        return -1;
+                                }
+                                com.outbits += bit;
+                                outbyte = com.outbits / CHAR_BITS;
+                                com.outbits = com.outbits % CHAR_BITS;
+                                if (outbyte > 0 && outbyte != wirtex(fd, &outch, outbyte)) {
+                                        //fprintf(stderr, "file to write %s : %s", outfile, strerror(errno));        
+                                        close(fd);
+                                        return -1;
+                                }
                         }
-                        low <<= 1;
-                        high <<= 1;
-                        ++high;
                 }
                 // get priority_offset
                 ++(priority[*(src+i) & 0xff]);
