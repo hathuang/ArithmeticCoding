@@ -7,8 +7,8 @@
 #include <sys/time.h>
 #include <fcntl.h>
 #include <unistd.h>
-#include "huffman.h"
-#include "log.h"
+#include "arithmetic.h"
+//#include "log.h"
 
 #define VERSION                 "1.0"
 #define Author                  "Hat Huang"
@@ -20,6 +20,7 @@
 
 int usage(const char *arg)
 {
+        fprintf(stderr, "\n     ArithmeticCoding");
         fprintf(stderr, "\n     Author  : %s", Author);
         fprintf(stderr, "\n     Version : %s\n\n", VERSION);
         fprintf(stderr, "Usage : %s [OPTION...] [INPPUT FILE] [OUTPUT FILE]\n", arg);
@@ -35,9 +36,7 @@ int usage(const char *arg)
 
 int main(int argc, char *argv[])
 {
-        char tags_buf[8];
         int len, ret, fd, mode;
-        struct huffman_tags *tags = NULL;
         char *buf = NULL, *infile = NULL, *outfile = NULL;
         unsigned int file_len;
         struct timeval tv_start, tv_end;
@@ -73,18 +72,12 @@ int main(int argc, char *argv[])
                 perror("fail to do gettimeofday");
                 return -1; 
         }
-        init_log();
+        //init_log();
         if (mode & MODE_COMPRESSION) {
                 // Compression
-                tags = (struct huffman_tags *)tags_buf;
-                strncpy((char *)(tags->fillbits), HUFFMAN_FILE_HEADER, 4);
-                tags->magic = ONE_CHAR << 4;
-                tags->bytes1 = 0;
-                tags->bytes2 = 0;
-                tags->bytes4 = 0;
-                        
                 if ((fd = open(infile, O_RDONLY)) < 0
-                        || (file_len = lseek(fd, 0, SEEK_END)) <= 0
+                        || (file_len = lseek(fd, 0, SEEK_END)) == 0
+                        || (file_len & 0x80000000)
                         || lseek(fd, 0, SEEK_SET) < 0) {
                         perror("Fail to open SRC_FILE.");
                         return 0;
@@ -105,28 +98,28 @@ int main(int argc, char *argv[])
                         len += ret;
                 }
                 close(fd);
-                if (huffman_compression(outfile, buf, file_len, tags)) {
-                        free(buf);
-                        printf("Error to huffman\n");
+                ret = compression(outfile, buf, file_len);
+                free(buf);
+                if (ret) {
+                        printf("Error to ArithmeticCoding\n");
                         return -1;
                 }
-                free(buf);
         } else if (mode & MODE_DECOMPRESSION) {
                 // Decompression 
-                if (huffman_decompression(infile, outfile)) {
-                        log(LOG_USER | LOG_ERR , "%s : Fail to huffman_decompression", __func__);
+                if (decompression(infile, outfile)) {
+                        //log(LOG_USER | LOG_ERR , "%s : Fail to huffman_decompression", __func__);
                         return -1;
                 }
         }
 #ifdef Debug
         printf("Good !\n");
 #else
-        unlink(LOG_FILE);
+        //unlink(LOG_FILE);
 #endif
         if (mode & MODE_DELETE) unlink(infile);
         if (mode & MODE_TIME) {
                 if (gettimeofday(&tv_end, NULL)) {
-                        perror("\nHuffman done, But fail to get time.");
+                        perror("\nArithmeticCoding done, But fail to get time.");
                 } else {
                         if (tv_end.tv_usec < tv_start.tv_usec) {
                                 tv_end.tv_usec = 1000000 + tv_end.tv_usec - tv_start.tv_usec;
@@ -135,7 +128,7 @@ int main(int argc, char *argv[])
                                 tv_end.tv_usec -= tv_start.tv_usec;
                                 tv_end.tv_sec -= tv_start.tv_sec; 
                         }
-                        fprintf(stderr, "\nHuffman done time : %us %ums\n", tv_end.tv_sec, (tv_end.tv_usec)/1000);
+                        fprintf(stderr, "\nArithmeticCoding done time : %us %ums\n", tv_end.tv_sec, (tv_end.tv_usec)/1000);
                         fflush(stderr);
                 }
         }

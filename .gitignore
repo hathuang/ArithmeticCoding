@@ -12,3 +12,4 @@ arithmetic
 *.log
 *.txt
 *.o
+*.tmp

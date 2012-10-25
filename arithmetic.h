@@ -36,8 +36,6 @@ struct tags {
 
 struct com {
         unsigned char outbits;
-        /*unsigned char currchar;*/
-        /*unsigned short elements;*/
         unsigned int high;
         unsigned int low;
         unsigned int currsize; // file size
@@ -52,13 +50,13 @@ extern int decompression(const char *outfile, const char *infile);
                                arithmetic file arch
 
 ----------------------------------------------------------------------------------
-|          tags            |                     8 bytes                         |
+|          tags            |              12 bytes (TAGS_SIZE)                   |
 |--------------------------+------------------------------------------------------
 |    elements descriptor   | static (as tags.elements say) or dynamic : 32 bytes |
 |--------------------------+------------------------------------------------------
 |  file body (magic body)  |      file length decrease the total bytes above     |
 ----------------------------------------------------------------------------------
  
- */ 
+*/ 
 
 #endif // arithmetic.h

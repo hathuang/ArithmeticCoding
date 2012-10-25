@@ -29,7 +29,7 @@ static int element_init(unsigned int *arr, const char *src, unsigned int length)
         return n;
 }
 
-unsigned int priority_offset(unsigned int *arr, const unsigned int ch)
+static unsigned int priority_offset(unsigned int *arr, const unsigned int ch)
 {
         unsigned int i, offset;
 
@@ -41,21 +41,21 @@ unsigned int priority_offset(unsigned int *arr, const unsigned int ch)
         return offset;
 }
 
-int expand(unsigned int *_high, unsigned int *_low, unsigned int size, unsigned int *_outch)
+static unsigned int expand(unsigned int *_high, unsigned int *_low, unsigned int size, unsigned int *_outch)
 {
         unsigned int high = *_high;
         unsigned int low = *_low;
         unsigned int outch = 0;
-        int bits = 0;
+        unsigned int bits = 0;
 
-        if (!outch) return -1; 
+        if (!_outch) return ~0;
         if ((high - low) > size) return 0;
         if (high == 0x80000000 && low == 0x7fffffff) {
                 high = ~0;
                 low = 0;
         } else {
                 while ((high - low) <= size) {
-                        if (++bits > 32) return -1;
+                        if (++bits > 32) return ~0;
                         outch <<= 1;
                         outch |= 0x01 & (high >> 31);
                         high <<= 1;
@@ -69,9 +69,7 @@ int expand(unsigned int *_high, unsigned int *_low, unsigned int size, unsigned 
         return bits;
 }
 
-
-//if (outformate(outstr, outch, com.outbits, bit)) {
-int outformate(unsigned char *currstr, unsigned int outch, unsigned char currbits, unsigned int bit)
+static int outformate(unsigned char *currstr, unsigned int outch, unsigned char currbits, unsigned int bit)
 {
         unsigned int byte, i, usebits, ret;
 
@@ -114,10 +112,9 @@ int compression(const char *outfile, char *src, unsigned int filesize)
 
         if (!outfile || !src || !filesize) return -1;
         if ((element_no = element_init(priority, src, filesize)) == 0 || element_no > 256) return -1;
-        //memset(&tag, 0, TAGS_SIZE);
         tag.tag = TAGS_TAG;
-        tag.elements = element_no & 0xff; // 256 is formated to 0 hear
         tag.filesize = filesize; 
+        tag.elements = element_no & 0xff; // 256 is formated to 0 hear
         tag.type = element_no > 32 ? TAGS_TYPE_DYNAMIC : TAGS_TYPE_STATIC;
         if ((fd = open(outfile, O_RDWR | O_CREAT | O_TRUNC, 0644)) < 0) {
                 return -1;
@@ -157,23 +154,22 @@ int compression(const char *outfile, char *src, unsigned int filesize)
         com.low = 0;
         com.high = ~0; // 0xffffffff > 4290000000
         com.offset = 0;
-        //com.currsize = 0;
         com.currsize = element_no & 0xffff;
-        //com.currchar = 0;
-        //com.elements = element_no & 0xffff;
         while (i < filesize) {
+                //printf("enter loop i=%d, filesize=%d\n", i, filesize);
                 if ((com.high - com.low) < com.currsize) {
                         if ((bit = expand(&com.high, &com.low, com.currsize, &outch)) < 0) {
                                 return -1;
                         } else if (bit > 0) {
+                                //printf("com.outbits = %d, bit = %d\n", com.outbits, bit);
                                 if ((outbyte = outformate(outstr, outch, com.outbits, bit)) < 0) {
                                         close(fd);
+                                        fprintf(stderr, "fail to do outformate.\n");        
                                         return -1;
                                 }
                                 com.outbits += bit;
-                                //outbyte = com.outbits / CHAR_BITS;
-                                //com.outbits = com.outbits % CHAR_BITS;
                                 com.outbits = com.outbits - (outbyte << 3);
+                                //printf("com.outbits = %d, bit = %d\n", com.outbits, bit);
                                 if (outbyte > 0) {
                                         if (outbyte != writex(fd, &outstr, outbyte)) {
                                                 fprintf(stderr, "file to write %s : %s", outfile, strerror(errno));        
@@ -197,6 +193,7 @@ int compression(const char *outfile, char *src, unsigned int filesize)
                 com.high = high;
                 ++i;
         }
+        //printf("com.outbits = %d, outstr[0]=0x%x\n", com.outbits, outstr[0]&0xff);
         if (com.outbits > 0) {
                 if (com.outbits >= CHAR_BITS) return -1;
                 outstr[0] <<= CHAR_BITS - com.outbits;
@@ -223,7 +220,62 @@ int compression(const char *outfile, char *src, unsigned int filesize)
 /* arithmetic_decompression */
 int decompression(const char *outfile, const char *infile)
 {
+        unsigned int priority[256];
+        //char tag[sizeof(struct tags)];
+        unsigned int element_no;
+        int fd, i, j;
+        unsigned char buf[256], outstr[8];
+        struct tags tag;
+        struct com com;
+        unsigned int high, low, bit, outbyte, outch = 0, filesize;
+        unsigned long long tmp;
+
         if (!outfile || !infile) return -1;
+        if ((fd = open(infile, O_RDONLY)) < 0) return -1;
+        if ((fd = open(infile, O_RDONLY)) < 0
+                || (filesize = lseek(fd, 0, SEEK_END)) == 0
+                || (filesize & 0x80000000)
+                || lseek(fd, 0, SEEK_SET) < 0) {
+                perror("Fail to open SRC_FILE.");
+                return 0;
+        }
+        if (TAGS_SIZE != readx(fd, &tag, TAGS_SIZE)) {
+                close(fd);
+                return -1;
+        }
+        filesize -= TAGS_SIZE;
+        if (tag.type & TAGS_TYPE_STATIC) {
+                if (tag.elements != readx(fd, buf, tag.elements)) {
+                        close(fd);
+                        return -1;
+                }
+                filesize -= tag.elements;
+                i = 0;
+                for (i = 0; i < 256; i++) priority[i] = 0;
+                while (i < tag.elements) priority[buf[i++] & 0xff] = 1;
+        } else if (tag.type & TAGS_TYPE_DYNAMIC) {
+                if (32 != readx(fd, buf, 32)) {
+                        close(fd);
+                        return -1;
+                }
+                filesize -= 32;
+                i = 0;
+                while (i < 32) {
+                        j = 0;
+                        while (j < CHAR_BITS) {
+                                priority[(i << 3) | j] = (buf[i] >> (CHAR_BITS - j - 1)) & 0x01;
+                                ++j;
+                        }
+                        ++i;
+                }
+        } else {
+                close(fd);
+                return -1;
+        }
+        element_no = tag.elements == 0 ? 256 : tag.elements;
+
+
+
 
 
         return 0;
