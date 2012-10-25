@@ -109,11 +109,12 @@ int compression(const char *outfile, char *src, unsigned int filesize)
         unsigned char buf[256], outstr[8];
         struct tags tag;
         struct com com;
-        unsigned int high, low, bit, outch, outbyte;
+        unsigned int high, low, bit, outbyte, outch = 0;
+        unsigned long long tmp;
 
         if (!outfile || !src || !filesize) return -1;
         if ((element_no = element_init(priority, src, filesize)) == 0 || element_no > 256) return -1;
-        memset(&tag, 0, TAGS_SIZE);
+        //memset(&tag, 0, TAGS_SIZE);
         tag.tag = TAGS_TAG;
         tag.elements = element_no & 0xff; // 256 is formated to 0 hear
         tag.filesize = filesize; 
@@ -156,9 +157,10 @@ int compression(const char *outfile, char *src, unsigned int filesize)
         com.low = 0;
         com.high = ~0; // 0xffffffff > 4290000000
         com.offset = 0;
-        com.currsize = 0;
-        com.currchar = 0;
-        com.elements = element_no & 0xffff;
+        //com.currsize = 0;
+        com.currsize = element_no & 0xffff;
+        //com.currchar = 0;
+        //com.elements = element_no & 0xffff;
         while (i < filesize) {
                 if ((com.high - com.low) < com.currsize) {
                         if ((bit = expand(&com.high, &com.low, com.currsize, &outch)) < 0) {
@@ -172,29 +174,44 @@ int compression(const char *outfile, char *src, unsigned int filesize)
                                 //outbyte = com.outbits / CHAR_BITS;
                                 //com.outbits = com.outbits % CHAR_BITS;
                                 com.outbits = com.outbits - (outbyte << 3);
-                                if (outbyte > 0 && com.outbytes += outbyte && outbyte != writex(fd, &outch, outbyte)) {
-                                        fprintf(stderr, "file to write %s : %s", outfile, strerror(errno));        
-                                        close(fd);
-                                        return -1;
+                                if (outbyte > 0) {
+                                        if (outbyte != writex(fd, &outstr, outbyte)) {
+                                                fprintf(stderr, "file to write %s : %s", outfile, strerror(errno));        
+                                                close(fd);
+                                                return -1;
+                                        }
+                                        com.outbytes += outbyte;
+                                        outstr[0] = outstr[outbyte];
                                 }
                         }
                 }
                 // get priority_offset
                 if ((com.offset = priority_offset(priority, *(src+i))) >= (filesize + element_no)) return -1;
-                low = (com.high - com.low) * com.offset / all_priority + com.low;
-                high = (com.high - com.low) * (com.offset + (priority[*(src+i) & 0xff])) / all_priority + com.low;
+                tmp = (com.high - com.low) * ((unsigned long long)com.offset);
+                low = edge(tmp , com.currsize) + com.low;
+                tmp = (com.high - com.low) * ((unsigned long long)com.offset + priority[*(src+i) & 0xff]);
+                high = edge(tmp , com.currsize) + com.low;
                 ++(priority[*(src+i) & 0xff]);
                 ++(com.currsize);
                 com.low = low;
                 com.high = high;
                 ++i;
         }
-        tag.lastoutbits = outbits ? outbits : CHAR_BITS;
-        tag.magic = (low + high) > 1;
-        if (tag.magic >= high || tags.magic <= low) {
-                // TODO
+        if (com.outbits > 0) {
+                if (com.outbits >= CHAR_BITS) return -1;
+                outstr[0] <<= CHAR_BITS - com.outbits;
+                if (1 != writex(fd, &outstr, 1)) {
+                        fprintf(stderr, "file to write %s : %s", outfile, strerror(errno));        
+                        close(fd);
+                        return -1;
+                }
+                tag.lastoutbits = com.outbits;
+        } else {
+                tag.lastoutbits = CHAR_BITS;
         }
-        if (lseek(fd, 0, SEEK_SET) < 0 || sizeof(struct tags) != wirte(fd, &tag, sizeof(struct tags))) {
+        tmp = (com.low + com.high);
+        tag.magic = tmp >> 1;
+        if (lseek(fd, 0, SEEK_SET) < 0 || TAGS_SIZE != writex(fd, &tag, TAGS_SIZE)) {
                 close(fd);
                 return -1;
         }

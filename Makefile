@@ -14,4 +14,6 @@ arithmetic: $(OBJ)
 .PHONY: clean
 
 clean:
-	rm -f *.o *~ core
+	rm -f *.o
+	rm -f *~
+	rm -f core

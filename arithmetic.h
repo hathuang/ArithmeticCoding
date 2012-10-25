@@ -36,8 +36,8 @@ struct tags {
 
 struct com {
         unsigned char outbits;
-        unsigned char currchar;
-        unsigned short elements;
+        /*unsigned char currchar;*/
+        /*unsigned short elements;*/
         unsigned int high;
         unsigned int low;
         unsigned int currsize; // file size
