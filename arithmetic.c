@@ -20,10 +20,8 @@ static int element_init(unsigned int *arr, const char *src, unsigned int length)
         i = 0;
         n = 0;
         while (i < length) {
-                if (0 == arr[0xff & *(src+i++)]) {
-                        ++n;
+                if (0 == arr[0xff & *(src+i++)] && ++n)
                         arr[0xff & *(src+i-1)] = 1;
-                }
         }
 
         return n;
@@ -218,26 +216,17 @@ int compression(const char *outfile, char *src, unsigned int filesize)
 }
 
 /* arithmetic_decompression */
-int decompression(const char *outfile, const char *infile)
+static unsigned int toget(const char *file, unsigned int *priority, char *src, struct tags *tag)
 {
-        unsigned int priority[256];
-        //char tag[sizeof(struct tags)];
-        unsigned int element_no;
-        int fd, i, j;
-        unsigned char buf[256], outstr[8];
-        struct tags tag;
-        struct com com;
-        unsigned int high, low, bit, outbyte, outch = 0, filesize;
-        unsigned long long tmp;
+        unsigned int filesize;
 
-        if (!outfile || !infile) return -1;
-        if ((fd = open(infile, O_RDONLY)) < 0) return -1;
-        if ((fd = open(infile, O_RDONLY)) < 0
-                || (filesize = lseek(fd, 0, SEEK_END)) == 0
+        if (!file || !priority || !src || !tag) return -1;
+
+        if ((fd = open(file, O_RDONLY)) < 0) return -1;
+        if ((filesize = lseek(fd, 0, SEEK_END)) == 0
                 || (filesize & 0x80000000)
                 || lseek(fd, 0, SEEK_SET) < 0) {
-                perror("Fail to open SRC_FILE.");
-                return 0;
+                return -1;
         }
         if (TAGS_SIZE != readx(fd, &tag, TAGS_SIZE)) {
                 close(fd);
@@ -250,8 +239,8 @@ int decompression(const char *outfile, const char *infile)
                         return -1;
                 }
                 filesize -= tag.elements;
-                i = 0;
                 for (i = 0; i < 256; i++) priority[i] = 0;
+                i = 0;
                 while (i < tag.elements) priority[buf[i++] & 0xff] = 1;
         } else if (tag.type & TAGS_TYPE_DYNAMIC) {
                 if (32 != readx(fd, buf, 32)) {
@@ -274,6 +263,23 @@ int decompression(const char *outfile, const char *infile)
         }
         element_no = tag.elements == 0 ? 256 : tag.elements;
 
+
+        return 0;
+}
+
+int decompression(const char *outfile, const char *infile)
+{
+        unsigned int priority[256];
+        //char tag[sizeof(struct tags)];
+        unsigned int element_no;
+        int fd, i, j;
+        unsigned char buf[256], outstr[8];
+        struct tags tag;
+        struct com com;
+        unsigned int high, low, bit, outbyte, outch = 0, filesize;
+        unsigned long long tmp;
+
+        if (!outfile || !infile) return -1;
 
 
 
